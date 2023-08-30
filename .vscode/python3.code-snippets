@@ -1,6 +1,6 @@
 {
 	"descriptor": {
-		"prefix": "dsp-temp",
+		"prefix": "dsc",
 		"scope": "python",
 		"body": [
 		  "class DescriptorClassName:",
