@@ -1,7 +1,9 @@
-## 第十章：协程和 asyncio 并发编程
+## 第十章：协程
 
 
-协程：可以暂停的函数（可以向暂停的地方传入值），并且可以在适当的时候回复该函数的继续执行。
+协程是 python 中另外一种实现多任务的方式，只不过比线程更小占用更小执行单元。
+
+在一个线程中的某个函数，可以在任何地方保存当前函数的一些临时变量等信息，然后切换到另外一个函数中执行（注意不是通过调用函数的方式做到的），并且切换的次数以及什么时候再切换到原来的函数都由开发者自己确定。
 
 > 可以使用生成器实现协程。
 
@@ -178,5 +180,133 @@ if __name__ == "__main__":
 
 ### 3. 协程
 
-在 python3.5 之前，协程都是通过生成器实现的；在 python3.5 后，python 为了将语义变得更加明确，就引入了 `async` 和 `await` 关键词用于定义原生的协程。
+#### 1）使用 yield 实现协程
 
+```python
+import time
+
+
+def work1():
+    count = 0
+    while count < 10:
+        print("------ worker1 ------")
+        count += 1
+        yield
+        time.sleep(0.5)
+
+
+def work2():
+    count = 0
+    while count < 10:
+        print("------ worker2 ------")
+        count += 1
+        yield
+        time.sleep(0.5)
+
+
+def main():
+    w1 = work1()
+    w2 = work2()
+    while True:
+        next(w1)
+        next(w2)
+
+
+if __name__ == "__main__":
+    main()
+```
+
+通过协程可以实现多任务，但是这种方案一定是假的任务，又因为只要运行时切换任务足够看，用户看不出区别，所以表面上这就是多任务。
+
+#### 2）使用 greenlet 实现协程
+
+必须先安装 greenlet：
+```shell
+pip install greenlet
+```
+
+使用方式：
+
+```python
+import time
+from greenlet import greenlet
+
+
+def work1():
+    count = 0
+    while count < 10:
+        print("------ worker1 ------")
+        count += 1
+        gr2.switch()
+        time.sleep(0.5)
+
+
+def work2():
+    count = 0
+    while count < 10:
+        print("------ worker2 ------")
+        count += 1
+        gr1.switch()
+        time.sleep(0.5)
+
+
+gr1 = greenlet(work1)
+gr2 = greenlet(work2)
+
+
+gr1.switch()
+```
+
+#### 3）使用 gevent 实现协程
+前2种实现协程的方式都不好，推荐使用这种方式。
+
+greenlet 已经实现了协程，但是还需要人工切换，太麻烦了。python 还有一个比 greenlet 更强大的并且能够自动切换任务的模块 gevent。
+
+其原理是当一个 greenlet 遇到 IO 操作时，就自动切换到其他的 greenlet，等到 IO 操作结束，再在适当的时候切换回来继续执行。
+
+由于 IO 操作非常耗时，经常使程序处于等待状态， 有了 gevent 我们就自动切换协程，就保证总有 greenlet 在运行。
+
+> gevent 切换的条件是：遇到延时
+
+使用 gevent 需要先安装：
+```shell
+pip install gevent
+```
+
+使用方式：
+```python
+import time
+import gevent
+from gevent import monkey
+
+
+# time 模块中的延时不具备自动切换任务的功能，而 gevent 中的延时具备
+# 因此我们需要将 time 延时全部改为 gevent 延时
+# 这句话可以让代码中所有的 time.sleep() 切换成 gevent.sleep()
+monkey.patch_all()
+
+
+def f(n):
+    for i in range(n):
+        print(gevent.getcurrent(), i)
+        # gevent.sleep(0.1)                 # 这就是一个延时操作，会引发 gevent 切换任务
+
+        # 默认情况下 time.sleep 不会导致 gevent 切换
+        # 需要加上 monkey.patch_all() 才可以
+        time.sleep(0.1)
+
+
+# g1 = gevent.spawn(f, 4)
+# g2 = gevent.spawn(f, 5)
+# g3 = gevent.spawn(f, 6)
+# g1.join()       # join 会等待 g1 标识的那个任务执行完毕后，对其进行清理工作，其实这就是一个耗时操作
+# g2.join()
+# g3.join()
+
+# 等价于上面的
+gevent.joinall([
+    gevent.spawn(f, 4),
+    gevent.spawn(f, 5),
+    gevent.spawn(f, 6),
+])
+```
